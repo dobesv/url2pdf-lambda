@@ -1,0 +1,32 @@
+service: url2pdf
+
+frameworkVersion: ">=1.2.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: python2.7
+  memorySize: 1536
+  timeout: 300
+  apiKeys:
+    - ${self:provider.stage}
+
+functions:
+  url2pdf:
+    handler: service.handler
+    events:
+      - http:
+          path: pdf
+          method: get
+          contentHandling: CONVERT_TO_BINARY
+          private: true
+
+plugins:
+  - serverless-apigw-binary
+  - serverless-apigwy-binary
+
+custom:
+  apigwBinary:
+    types:
+      - 'application/pdf'
+      - '*/*'
+  apiCloudFront: {}
