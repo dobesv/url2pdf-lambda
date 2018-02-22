@@ -28,7 +28,7 @@ user_agent = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36")
 dcap = dict(DesiredCapabilities.PHANTOMJS)
 dcap["phantomjs.page.settings.userAgent"] = user_agent
-dcap["phantomjs.page.settings.javascriptEnabled"] = True
+dcap["phantomjs.page.settings.javascriptEnabled"] = False
 
 
 def url2pdf(url):
@@ -60,7 +60,7 @@ def url2pdf(url):
 
             # set page format
             # inside the execution script, webpage is "this"
-            execute('this.paperSize = {format: "Letter", orientation: "portrait" };')
+            execute('this.paperSize = {format: "Letter", orientation: "portrait", margin: { top: 0, right: 0, bottom: 0, left: 0 } };')
 
             # render current page
             execute('this.render("%s", {"format":"pdf"});' % outfile.name)
