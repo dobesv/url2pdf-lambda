@@ -30,6 +30,13 @@ dcap = dict(DesiredCapabilities.PHANTOMJS)
 dcap["phantomjs.page.settings.userAgent"] = user_agent
 dcap["phantomjs.page.settings.javascriptEnabled"] = False
 
+logfile = NamedTemporaryFile(suffix='.log')
+driver = webdriver.PhantomJS(
+    service_log_path=logfile.name,
+    executable_path="/var/task/phantomjs",
+    service_args=['--ignore-ssl-errors=true'],
+    desired_capabilities=dcap)
+
 
 def url2pdf(url):
     """
@@ -42,52 +49,48 @@ def url2pdf(url):
         bytes: PDF blob
     """
     start = time.time()
-    log.debug('Starting to render PDF')
     with NamedTemporaryFile(mode='r+b', suffix='.pdf') as outfile:
-        with NamedTemporaryFile(suffix='.log') as logfile:
-            driver = webdriver.PhantomJS(
-                service_log_path=logfile.name,
-                executable_path="/var/task/phantomjs",
-                service_args=['--ignore-ssl-errors=true'],
-                desired_capabilities=dcap)
-            driver.set_window_size(1024, 768)  # optional
-            driver.get(url)
+        logfile_pos = logfile.tell()
+        driver.set_window_size(1024, 768)  # optional
+        driver.get(url)
 
-            def execute(script, args=None):
-                driver.execute('executePhantomScript', {'script': script, 'args': args or []})
+        def execute(script, args=None):
+            driver.execute('executePhantomScript', {'script': script, 'args': args or []})
 
-            driver.command_executor._commands['executePhantomScript'] = ('POST', '/session/$sessionId/phantom/execute')
+        driver.command_executor._commands['executePhantomScript'] = ('POST', '/session/$sessionId/phantom/execute')
 
-            # set page format
-            # inside the execution script, webpage is "this"
-            execute('this.paperSize = {format: "Letter", orientation: "portrait", margin: { top: 0, right: 0, bottom: 0, left: 0 } };')
+        # set page format
+        # inside the execution script, webpage is "this"
+        execute('this.paperSize = {format: "Letter", orientation: "portrait", margin: { top: 0, right: 0, bottom: 0, left: 0 } };')
 
-            # render current page
-            execute('this.render("%s", {"format":"pdf"});' % outfile.name)
+        # render current page
+        execute('this.render("%s", {"format":"pdf"});' % outfile.name)
 
-            # Output any log messages from phantomjs somewhere we might see them
-            phantomjs_logger = logging.getLogger('phantomjs')
-            logfile.seek(0)
-            for line in logfile:
-                line = line.strip()
-                if line:
-                    level = logging.DEBUG
-                    if line.startswith('['):
-                        level_name = line[1:].split(' ', 1)[0]
-                        level = dict(
-                            WARNING=logging.WARNING,
-                            WARN=logging.WARN,
-                            INFO=logging.INFO,
-                            ERROR=logging.ERROR,
-                            CRITICAL=logging.CRITICAL,
-                            FATAL=logging.FATAL,
-                        ).get(level_name, level)
-                    phantomjs_logger.log(level, line)
+        driver.get('about:blank')
 
-            outfile.seek(0)
+        # Output any log messages from phantomjs somewhere we might see them
+        phantomjs_logger = logging.getLogger('phantomjs')
+        logfile.seek(logfile_pos)
+        for line in logfile:
+            line = line.strip()
+            if line:
+                level = logging.DEBUG
+                if line.startswith('['):
+                    level_name = line[1:].split(' ', 1)[0]
+                    level = dict(
+                        WARNING=logging.WARNING,
+                        WARN=logging.WARN,
+                        INFO=logging.INFO,
+                        ERROR=logging.ERROR,
+                        CRITICAL=logging.CRITICAL,
+                        FATAL=logging.FATAL,
+                    ).get(level_name, level)
+                phantomjs_logger.log(level, line)
 
-            log.info('PDF generation took %.3fs' % (time.time() - start))
-            return outfile.read()
+        outfile.seek(0)
+
+        log.info('PDF generation took %.3fs' % (time.time() - start))
+        return outfile.read()
 
 
 def handler(event, context):
@@ -103,7 +106,8 @@ def handler(event, context):
         "body": base64.b64encode(body),
         "headers": {
             "Content-Type": "application/pdf",
-            "Content-Length": len(body)
+            "Content-Length": len(body),
+            "Cache-Control": "max-age=86400"
         },
         "isBase64Encoded": True
     }
